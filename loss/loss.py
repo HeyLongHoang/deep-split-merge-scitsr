@@ -19,7 +19,10 @@ def bce_loss(pred, label):
   row_pred, column_pred = pred
   row_label, column_label = label
 
-  criterion = torch.nn.BCELoss(torch.tensor([10.])).cuda()
+  if torch.cuda.is_available():
+    criterion = torch.nn.BCELoss(torch.tensor([10.])).cuda()
+  else:
+    criterion = torch.nn.BCELoss(torch.tensor([10.]))
 
   lr3 = criterion(row_pred[0].view(-1), row_label.view(-1))
 

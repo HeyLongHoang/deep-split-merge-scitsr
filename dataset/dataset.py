@@ -15,7 +15,7 @@ class ImageDataset(Dataset):
   """Image Dataset"""
 
   def __init__(self, img_dir, labels_dict, output_width, scale=0.5,
-               min_width=40, mode='split', suffix='.npy'):
+               min_width=40, mode='split', suffix='.png'):
     """
     Initialization of the dataset
 
@@ -52,6 +52,10 @@ class ImageDataset(Dataset):
     elif self.suffix == '.jpg':
       img = Image.open(os.path.join(self.img_dir, id + self.suffix))
       img = np.array(img)
+    elif self.suffix == '.png':
+      img = cv2.imread(os.path.join(self.img_dir, id + self.suffix))
+      img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+      img = np.transpose(img, (2,0,1))
     c, h, w = img.shape
     new_h = int(self.scale * h) if int(
       self.scale * h) > self.min_width else self.min_width
@@ -77,8 +81,8 @@ class ImageDataset(Dataset):
       return img_tensor, (row_label, column_label), (rows, columns)
     else:
       labels = self.labels_dict[id]
-      row_label = labels['row']
-      column_label = labels['column']
+      row_label = labels['rows']
+      column_label = labels['columns']
 
       # resize ground truth to proper size
       width = int(np.floor(new_w / self.output_width))

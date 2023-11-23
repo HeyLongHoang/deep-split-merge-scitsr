@@ -32,10 +32,10 @@ def train(opt, net):
     val_labels = json.load(f)
   val_img_dir = opt.val_img_dir
 
-  train_set = ImageDataset(dir_img, labels, opt.featureW, scale=opt.scale)
+  train_set = ImageDataset(dir_img, labels, opt.featureW, scale=opt.scale, suffix='.png')
   train_loader = DataLoader(train_set, batch_size=opt.batch_size, shuffle=True)
 
-  val_set = ImageDataset(val_img_dir, val_labels, opt.featureW, scale=opt.scale)
+  val_set = ImageDataset(val_img_dir, val_labels, opt.featureW, scale=opt.scale, suffix='.png')
   val_loader = DataLoader(val_set, batch_size=opt.batch_size, shuffle=False)
 
   print('Data loaded!')
@@ -57,7 +57,8 @@ def train(opt, net):
         img = img.cuda()
         label = [x.cuda() for x in label]
       pred_label = net(img)
-      loss = loss_func(pred_label, label, [0.1, 0.25, 1])
+      # loss = loss_func(pred_label, label, [0.1, 0.25, 1])
+      loss = loss_func(pred_label, label)
       epoch_loss += loss
       optimizer.zero_grad()
       loss.backward()
