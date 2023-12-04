@@ -4,7 +4,7 @@
 
 import torch
 import torch.nn as nn
-
+import numpy as np
 
 class MergeModel(nn.Module):
   """
@@ -66,17 +66,17 @@ class MergeModel(nn.Module):
     """
     feature = self.sfcn(x)
 
-    right_feature, r3 = self.rpn1(feature,
-                                  arc)  # self.rpn3(self.rpn2(self.rpn1(feature, arc), arc), arc)
+    right_feature, r3 = self.rpn1(feature, arc)  
+    # right_feature, r3 = self.rpn3(self.rpn2(self.rpn1(feature, arc), arc), arc)
 
-    left_feature, l3 = self.lpn1(feature,
-                                 arc)  # self.lpn3(self.lpn2(self.lpn1(feature, arc), arc), arc)
+    left_feature, l3 = self.lpn1(feature, arc)  
+    # left_feature, l3 = self.lpn3(self.lpn2(self.lpn1(feature, arc), arc), arc)
 
-    up_feature, u3 = self.upn1(feature,
-                               arc)  # self.upn3(self.upn2(self.upn1(feature, arc), arc), arc)
+    up_feature, u3 = self.upn1(feature, arc)  
+    # up_feature, u3 = self.upn3(self.upn2(self.upn1(feature, arc), arc), arc)
 
-    down_feature, d3 = self.dpn1(feature,
-                                 arc)  # self.dpn3(self.dpn2(self.dpn1(feature, arc), arc), arc)
+    down_feature, d3 = self.dpn1(feature, arc)  
+    # down_feature, d3 = self.dpn3(self.dpn2(self.dpn1(feature, arc), arc), arc)
 
     output = [u3.squeeze(1), d3.squeeze(1), l3.squeeze(1), r3.squeeze(1)]
     return output
@@ -109,23 +109,26 @@ class GridProjectPooling(nn.Module):
       matrix(torch.tensor): A M x N matrix, where M and N indicates the number of
           lines in horizontal and vertical directions.
     """
-    b, c, h, w = x.size()
+    # NOTE: height of x and h_line are different, so not sure how they splited
+    b, c, H, W = x.size()
     h_line, v_line = architecture
-    self.h_line = [torch.Tensor([0]).type(
-      torch.DoubleTensor).cuda()] + h_line + [
-                    torch.Tensor([1]).type(torch.DoubleTensor).cuda()]
-    self.v_line = [torch.Tensor([0]).type(
-      torch.DoubleTensor).cuda()] + v_line + [
-                    torch.Tensor([1]).type(torch.DoubleTensor).cuda()]
-    self.h_line = [(h * x).round().type(torch.IntTensor) for x in self.h_line]
-    self.v_line = [(w * x).round().type(torch.IntTensor) for x in self.v_line]
 
-    rows = [self.h_line[i + 1] - self.h_line[i] for i in
-            range(len(self.h_line) - 1)]
-    columns = [self.v_line[i + 1] - self.v_line[i] for i in
-               range(len(self.v_line) - 1)]
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    self.h_line = [torch.tensor([0.], device=device, dtype=torch.double)] \
+                + h_line \
+                + [torch.tensor([1.], device=device, dtype=torch.double)] 
+    self.v_line = [torch.tensor([0.], device=device, dtype=torch.double)] \
+                + v_line \
+                + [torch.tensor([1.], device=device, dtype=torch.double)]
+      
+    self.h_line = [(H * x).round().type(torch.int) for x in self.h_line]
+    self.v_line = [(W * x).round().type(torch.int) for x in self.v_line]
 
-    slices = torch.split(x, rows, 2)
+    # # NOTE: change
+    rows = [self.h_line[i + 1] - self.h_line[i] for i in range(len(self.h_line) - 1)]
+    columns = [self.v_line[i + 1] - self.v_line[i] for i in range(len(self.v_line) - 1)]
+    slices = torch.split(x, rows, dim=2)
+
     means = [torch.mean(y, 2).unsqueeze(2) for y in slices]
     matrix = torch.cat(means, 2)
     blocks = [means[i].repeat(1, 1, rows[i], 1) for i in range(len(means))]
@@ -141,26 +144,7 @@ class GridProjectPooling(nn.Module):
     blocks = [block_mean[i].repeat(1, 1, 1, columns[i]) for i in
               range(len(block_mean))]
     output = torch.cat(blocks, 3)
-    """
-    Old version Grid pooling
-    v_blocks = []
-    matrix = torch.from_numpy(np.ones([b, c, len(self.h_line) - 1, len(self.v_line) - 1])).type(
-        torch.FloatTensor).cuda()
-    for i in range(len(self.h_line) - 1):
-        h_blocks = []
-        for j in range(len(self.v_line) - 1):
-            output_block = torch.from_numpy(
-                np.ones([b, c, self.h_line[i + 1] - self.h_line[i], self.v_line[j + 1] - self.v_line[j]])).type(
-                torch.FloatTensor).cuda()
-            mean = torch.mean(
-                torch.mean(x[:, :, self.h_line[i]:self.h_line[i + 1], self.v_line[j]:self.v_line[j + 1]], 2),
-                2).cuda()
-            matrix[:, :, i, j] = mean
-            h_blocks.append(mean.unsqueeze(0).transpose(0, 2) * output_block)
-        h_block = torch.cat(h_blocks, 3)
-        v_blocks.append(h_block)
-    output = torch.cat(v_blocks, 2)
-    """
+
     return output, matrix
 
 
@@ -181,13 +165,16 @@ class ProjectionNet(nn.Module):
     super(ProjectionNet, self).__init__()
     self.conv_branch1 = nn.Sequential(
       nn.Conv2d(input_channels, 6, 3, stride=1, padding=1, dilation=1),
-      nn.GroupNorm(3, 6), nn.ReLU(True))
+      nn.GroupNorm(3, 6), nn.ReLU(True)
+    )
     self.conv_branch2 = nn.Sequential(
       nn.Conv2d(input_channels, 6, 3, stride=1, padding=2, dilation=2),
-      nn.GroupNorm(3, 6), nn.ReLU(True))
+      nn.GroupNorm(3, 6), nn.ReLU(True)
+    )
     self.conv_branch3 = nn.Sequential(
       nn.Conv2d(input_channels, 6, 3, stride=1, padding=3, dilation=3),
-      nn.GroupNorm(3, 6), nn.ReLU(True))
+      nn.GroupNorm(3, 6), nn.ReLU(True)
+    )
     self.sigmoid = sigmoid
     self.project_module = ProjectionModule(18, sigmoid, dropout=dropout)
 
@@ -232,11 +219,14 @@ class ProjectionModule(nn.Module):
     self.sigmoid = sigmoid
 
     self.feature_conv = nn.Sequential(
-      nn.Conv2d(input_channels, input_channels, 1, bias=False)
-      , nn.GroupNorm(6, input_channels), nn.ReLU(True))
-    self.prediction_conv = nn.Sequential(nn.Dropout2d(p=dropout),
-                                         nn.Conv2d(input_channels, 1, 1,
-                                                   bias=False))
+      nn.Conv2d(input_channels, input_channels, 1, bias=False), 
+      nn.GroupNorm(6, input_channels), 
+      nn.ReLU(True)
+    )
+    self.prediction_conv = nn.Sequential(
+      nn.Dropout2d(p=dropout),
+      nn.Conv2d(input_channels, 1, 1, bias=False)
+    )
 
     self.feature_project = GridProjectPooling()
     self.prediction_project = GridProjectPooling()
@@ -286,14 +276,22 @@ class SharedFCN(nn.Module):
     self.conv = nn.Sequential(
       nn.Sequential(
         nn.Conv2d(input_channels, 18, 7, stride=1, padding=3, bias=False),
-        nn.ReLU(True)),
-      nn.Sequential(nn.Conv2d(18, 18, 7, stride=1, padding=3, bias=False),
-                    nn.ReLU(True)),
+        nn.ReLU(True)
+      ),
+      nn.Sequential(
+        nn.Conv2d(18, 18, 7, stride=1, padding=3, bias=False),
+        nn.ReLU(True)
+      ),
       nn.MaxPool2d((2, 2)),
-      nn.Sequential(nn.Conv2d(18, 18, 7, stride=1, padding=3, bias=False),
-                    nn.ReLU(True)),
-      nn.Sequential(nn.Conv2d(18, 18, 7, stride=1, padding=3, bias=False),
-                    nn.ReLU(True)),
+
+      nn.Sequential(
+        nn.Conv2d(18, 18, 7, stride=1, padding=3, bias=False),
+        nn.ReLU(True)
+      ),
+      nn.Sequential(
+        nn.Conv2d(18, 18, 7, stride=1, padding=3, bias=False),
+        nn.ReLU(True)
+      ),
       nn.MaxPool2d((2, 2))
     )
 

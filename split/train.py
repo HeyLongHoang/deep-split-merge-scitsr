@@ -15,14 +15,15 @@ from dataset.dataset import ImageDataset
 from loss.loss import bce_loss
 from modules.split_modules import SplitModel
 from split.test import test
+from visualize import visualize_split
 
-
-def train(opt, net):
+def train(opt, net, pred_dir=None):
   """
   Train the split model
   Args:
     opt(dic): Options
     net(torch.model): Split model instance
+    pred_dir (string): directory to save sample predictions
   """
   with open(opt.json_dir, 'r') as f:
     labels = json.load(f)
@@ -78,6 +79,9 @@ def train(opt, net):
       'Epoch finished ! Loss: {0} , Accuracy: {1}'.format(epoch_loss / (i + 1),
                                                           accuracy))
     val_loss, val_acc = test(opt, net, val_loader)
+    # Visulize a single example
+    if pred_dir:
+      visualize_split(net, val_set, pred_dir)
     if val_acc > best_accuracy:
       best_accuracy = val_acc
       torch.save(net.state_dict(),

@@ -56,14 +56,16 @@ class ImageDataset(Dataset):
       img = cv2.imread(os.path.join(self.img_dir, id + self.suffix))
       img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
       img = np.transpose(img, (2,0,1))
+
     c, h, w = img.shape
-    new_h = int(self.scale * h) if int(
-      self.scale * h) > self.min_width else self.min_width
-    new_w = int(self.scale * w) if int(
-      self.scale * w) > self.min_width else self.min_width
+    new_h = int(self.scale * h) if int(self.scale * h) > self.min_width \
+                                else self.min_width
+    new_w = int(self.scale * w) if int(self.scale * w) > self.min_width \
+                                else self.min_width
     img = np.array(
-      [cv2.resize(img[i], (new_w, new_h), interpolation=cv2.INTER_AREA) for i in
-       range(c)])
+      [cv2.resize(img[i], (new_w, new_h), interpolation=cv2.INTER_AREA) 
+       for i in range(c)]
+    )
     img_array = np.array(img) / 255.
 
     if self.mode == 'merge':
@@ -73,13 +75,13 @@ class ImageDataset(Dataset):
       h_matrix = labels['h_matrix']
       v_matrix = labels['v_matrix']
 
-      img_tensor = torch.from_numpy(img_array).type(torch.FloatTensor)
-      row_label = torch.from_numpy(np.array(h_matrix)).type(torch.FloatTensor)
-      column_label = torch.from_numpy(np.array(v_matrix)).type(
-        torch.FloatTensor)
+      img_tensor = torch.from_numpy(img_array).type(torch.float)
+      row_label = torch.from_numpy(np.array(h_matrix)).type(torch.float)
+      column_label = torch.from_numpy(np.array(v_matrix)).type(torch.float)
 
       return img_tensor, (row_label, column_label), (rows, columns)
-    else:
+    
+    else: # 'split'
       labels = self.labels_dict[id]
       row_label = labels['rows']
       column_label = labels['columns']
@@ -88,8 +90,7 @@ class ImageDataset(Dataset):
       width = int(np.floor(new_w / self.output_width))
       height = int(np.floor(new_h / self.output_width))
       row_label = np.array([row_label]).T * np.ones((len(row_label), width))
-      column_label = np.array(column_label) * np.ones(
-        (height, len(column_label)))
+      column_label = np.array(column_label) * np.ones((height, len(column_label)))
 
       row_label = np.array(row_label, dtype=np.uint8)
       column_label = np.array(column_label, dtype=np.uint8)
@@ -100,8 +101,8 @@ class ImageDataset(Dataset):
       row_label = row_label[:, 0]
       column_label = column_label[0, :]
 
-      img_tensor = torch.from_numpy(img_array).type(torch.FloatTensor)
-      row_label = torch.from_numpy(row_label).type(torch.FloatTensor)
-      column_label = torch.from_numpy(column_label).type(torch.FloatTensor)
+      img_tensor = torch.from_numpy(img_array).type(torch.float)
+      row_label = torch.from_numpy(row_label).type(torch.float)
+      column_label = torch.from_numpy(column_label).type(torch.float)
 
       return img_tensor, (row_label, column_label)
