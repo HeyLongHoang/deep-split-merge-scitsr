@@ -52,7 +52,7 @@ def test(opt, net, data=None):
           img = img.cuda()
           label = [x.cuda() for x in label]
         pred_label = net(img)
-        loss = loss_func(pred_label, label, [0.1, 0.25, 1])
+        loss = loss_func(pred_label, label)
         epoch_loss += loss
         correct_count += (torch.sum(
           (pred_label[0] > 0.5).type(torch.IntTensor) == label[0][0].repeat(

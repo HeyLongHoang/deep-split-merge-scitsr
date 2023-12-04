@@ -7,7 +7,7 @@ import os
 from dataset.dataset import ImageDataset
 from modules.split_modules import SplitModel
 
-def visualize_split(model: SplitModel, dataset: ImageDataset, id: int, save_dir=None):
+def visualize_split(model: SplitModel, dataset: ImageDataset, id:int, epoch:int, save_dir=None):
     model.eval()
     img, label = dataset[id]
     r, c = model(img.unsqueeze(0))
@@ -28,8 +28,9 @@ def visualize_split(model: SplitModel, dataset: ImageDataset, id: int, save_dir=
     res = cv.bitwise_and(img_np, img_np, mask=mask_inv)
     res2 = cv.addWeighted(img_np, 0.5, res, 0.5, 0)
     if save_dir:
-        save_path = os.path.join(save_dir, f'split_pred_{id}.png')
+        save_path = os.path.join(save_dir, f'split_pred_{id}_epoch_{epoch}.png')
         cv.imwrite(save_path, cv.cvtColor(res2, cv.COLOR_RGB2BGR))
+        print(f'Saved prediction image at {save_path}')
     else:
         plt.figure(figsize=(10,10))
         plt.imshow(res2)
