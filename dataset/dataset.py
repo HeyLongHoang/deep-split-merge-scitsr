@@ -15,7 +15,7 @@ class ImageDataset(Dataset):
   """Image Dataset"""
 
   def __init__(self, img_dir, labels_dict, output_width, scale=0.5,
-               min_width=40, mode='split', suffix='.png'):
+               min_width=40, mode='split', suffix='.png', returns_image_name=False):
     """
     Initialization of the dataset
 
@@ -40,6 +40,7 @@ class ImageDataset(Dataset):
     self.min_width = min_width
     self.mode = mode
     self.suffix = suffix
+    self.returns_image_name = returns_image_name
 
   def __len__(self):
     return self.nSamples
@@ -105,4 +106,6 @@ class ImageDataset(Dataset):
       row_label = torch.from_numpy(row_label).type(torch.float)
       column_label = torch.from_numpy(column_label).type(torch.float)
 
+      if self.returns_image_name:
+        return img_tensor, (row_label, column_label), id
       return img_tensor, (row_label, column_label)
