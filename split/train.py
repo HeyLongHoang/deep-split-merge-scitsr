@@ -15,7 +15,8 @@ from dataset.dataset import ImageDataset
 from loss.loss import bce_loss
 from modules.split_modules import SplitModel
 from split.test import test
-from visualize.visualize import visualize_split
+from tqdm import tqdm
+# from visualize.visualize import visualize_split
 
 def train(opt, net, pred_dir=None, img_id=0):
   """
@@ -48,12 +49,12 @@ def train(opt, net, pred_dir=None, img_id=0):
                          weight_decay=0.001)
   best_accuracy = 0
   for epoch in range(opt.epochs):
-    print('epoch:{}'.format(epoch + 1))
+    # print('epoch:{}'.format(epoch + 1))j
     net.train()
     epoch_loss = 0
     correct_count = 0
     count = 0
-    for i, b in enumerate(train_loader):
+    for i, b in enumerate(tqdm(train_loader, desc=f'Epoch {epoch+1}')):
       img, label = b
       if opt.gpu:
         img = img.cuda()
