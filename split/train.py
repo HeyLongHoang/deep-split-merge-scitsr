@@ -81,8 +81,8 @@ def train(opt, net, pred_dir=None, img_id=0):
                                                           accuracy))
     val_loss, val_acc = test(opt, net, val_loader)
     # Visulize a single example
-    if pred_dir:
-      visualize_split(net, val_set, img_id % len(val_set), epoch, pred_dir)
+    # if pred_dir:
+    #   visualize_split(net, val_set, img_id % len(val_set), epoch, pred_dir)
 
     if val_acc > best_accuracy:
       best_accuracy = val_acc
