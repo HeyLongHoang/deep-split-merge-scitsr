@@ -8,12 +8,12 @@ from modules.split_modules import SplitModel
 LOAD_PRETRAINED = False
 MODEL_WEIGHT = '/home/hoanghuuson/table_recognition/scitsr-split-train/result/resultCP_v2.pth'
 
-train_img_dir = '/home/hoanghuuson/table_recognition/scitsr-split-train-small/train/img'
-train_json_label = '/home/hoanghuuson/table_recognition/scitsr-split-train-small/train/label/split-label.json'
-val_img_dir = '/home/hoanghuuson/table_recognition/scitsr-split-train-small/val/img'
-val_json_label = '/home/hoanghuuson/table_recognition/scitsr-split-train-small/val/label/split-label.json'
-save_dir = '/home/hoanghuuson/table_recognition/scitsr-split-train-small/result'
-pred_dir = '/home/hoanghuuson/table_recognition/scitsr-split-train-small/imgs'
+train_img_dir = '/home/hoanghuuson/table_recognition/scitsr-split-train/train/img'
+train_json_label = '/home/hoanghuuson/table_recognition/scitsr-split-train/train/label/split-label.json'
+val_img_dir = '/home/hoanghuuson/table_recognition/scitsr-split-train/val/img'
+val_json_label = '/home/hoanghuuson/table_recognition/scitsr-split-train/val/label/split-label.json'
+save_dir = '/home/hoanghuuson/table_recognition/scitsr-split-train/result'
+pred_dir = '/home/hoanghuuson/table_recognition/scitsr-split-train/imgs'
 
 class Args:
     def __init__(self, train_img_dir, train_json_label, val_img_dir, val_json_label, save_dir,
