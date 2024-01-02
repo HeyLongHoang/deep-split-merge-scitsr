@@ -83,8 +83,7 @@ def get_predictions(model, pred_dir, save_dir, img_names=None):
 
         res['row'] = eval3(r_pred, r_gt)
         res['col'] = eval3(c_pred, c_gt)
-        with open(os.path.join(img_save_dir, 'result.json'), 'w') as f:
-            json.dump(res, f)
+        write_json(os.path.join(img_save_dir, 'result.json'), res)
 
         pred_saved += 1
 
@@ -99,6 +98,8 @@ def get_eval(res_dir, top_n=5):
                     "row": {"precision": 0.9, "recall": 0.7, "f1": 0.8}, 
                     "col": {"precision": 0.4, "recall": 0.9, "f1": 0.6}
                 }
+    Returns:
+    None -- a file named 'stats.json' is created under res_dir
     '''
     json_paths = glob.glob(os.path.join(res_dir, '*', 'result.json'))
     r_precs, r_recs, r_f1s = [], [], []
