@@ -5,8 +5,8 @@ import torch.backends.cudnn as cudnn
 from split import train
 from modules.split_modules import SplitModel
 
-LOAD_PRETRAINED = False
-MODEL_WEIGHT = '/home/hoanghuuson/table_recognition/scitsr-split-train/result/resultCP_v2.pth'
+LOAD_PRETRAINED = True
+MODEL_WEIGHT = '/home/hoanghuuson/table_recognition/scitsr-split-train/result/resultCP_v3c.pth'
 
 train_img_dir = '/home/hoanghuuson/table_recognition/scitsr-split-train/train/img'
 train_json_label = '/home/hoanghuuson/table_recognition/scitsr-split-train/train/label/split-label.json'
@@ -32,11 +32,14 @@ class Args:
         self.featureW = featureW
         self.scale = scale
 
-opt = Args(train_img_dir, train_json_label, val_img_dir, val_json_label, save_dir)
+opt = Args(train_img_dir, train_json_label, val_img_dir, val_json_label, save_dir,
+           lr=0.00025)
 net = SplitModel(3)
 net = torch.nn.DataParallel(net)
+
 if LOAD_PRETRAINED:
     net.load_state_dict(torch.load(MODEL_WEIGHT))
+    print(f"Loaded model weights at {MODEL_WEIGHT}")
 
 print(f"Training on {'CUDA' if torch.cuda.is_available() else 'CPU'}")
 
@@ -49,4 +52,4 @@ if opt.gpu:
 if not os.path.exists(opt.saved_dir):
     os.mkdir(opt.saved_dir)
 
-train.train(opt, net, pred_dir)
+train.train(opt, net)
