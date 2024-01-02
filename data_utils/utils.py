@@ -43,7 +43,11 @@ def load_json(json_path):
         info = json.load(f)
     return info
 
-def vis_split(img, r, c, color='blue'):
+def write_json(json_path, obj):
+    with open(json_path, 'w') as f:
+        json.dump(obj, f)
+
+def vis_split(img, r, c, color='blue', view=True):
     '''Visualize split prediction'''
     if color == 'red': theme = (255,0,0)
     elif color == 'green': theme = (0,255,0)
@@ -58,7 +62,8 @@ def vis_split(img, r, c, color='blue'):
     bg_img[np.all(bg_img == (0, 0, 0), axis=-1)] = (255,255,255)
     split_img = ((0.5 * img) + (0.5 * bg_img)).astype("uint8")
     split_img = np.minimum(split_img, img)
-    view_imgs([split_img])
+    if view: 
+        view_imgs([split_img])
     return split_img
 
 def prep_image(img: np.array):
@@ -106,3 +111,26 @@ def refine_split_results(x, threshold=2, adj_threshold=5):
             i += 1
 
     return updated_x
+
+def eval3(x_pred, x_gt):
+    '''
+    Args:
+    x_pred -- predicted numpy binary vector, e.g. [1,1,0,0,1,...]
+    x_gt -- ground truth numpy binary vector, e.g. [1,0,0,1,0,...]
+    Returns:
+    res -- dictionary containing precision, recall, and f1 score
+    '''
+    if len(x_pred) != len(x_gt):
+        raise ValueError('Input vectors must have the same length')
+    # Calculate TP, FP, FN
+    tp = np.sum(np.logical_and(x_pred == 1, x_gt == 1))
+    fp = np.sum(np.logical_and(x_pred == 1, x_gt == 0))
+    fn = np.sum(np.logical_and(x_pred == 0, x_gt == 1))
+    
+    prec = tp / (tp + fp) if (tp + fp) != 0 else 0
+    rec = tp / (tp + fn) if (tp + fn) != 0 else 0
+    f1 = 2 * (prec * rec) / (prec + rec) if (prec + rec) != 0 else 0
+    res = {
+        'precision': prec, 'recall': rec, 'f1': f1
+    }
+    return res
