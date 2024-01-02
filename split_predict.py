@@ -103,6 +103,8 @@ def get_eval(res_dir, top_n=5):
     json_paths = glob.glob(os.path.join(res_dir, '*', 'result.json'))
     r_precs, r_recs, r_f1s = [], [], []
     c_precs, c_recs, c_f1s = [], [], []
+    image_f1_scores = {}  # Dictionary to store F1 scores for each image
+
     print(f'Calculating average scores for {len(json_paths)} images...')
 
     for json_path in json_paths:
@@ -110,6 +112,15 @@ def get_eval(res_dir, top_n=5):
         row, col = res['row'], res['col']
         r_precs.append(row['precision']); r_recs.append(row['recall']); r_f1s.append(row['f1'])
         c_precs.append(col['precision']); c_recs.append(col['recall']); c_f1s.append(col['f1'])
+
+        # Extract image name from the path (assumes image name is the last part of the path)
+        image_name = os.path.basename(os.path.dirname(json_path))
+        image_f1_scores[image_name] = row['f1']
+
+    # Find top_n highest and lowest F1 scores
+    sorted_image_f1_scores = sorted(image_f1_scores.items(), key=lambda x: x[1], reverse=True)
+    top_n_high_f1 = [image for image, f1 in sorted_image_f1_scores[:top_n]]
+    top_n_low_f1 = [image for image, f1 in sorted_image_f1_scores[-top_n:]]
 
     row_stats = {
         'precision': np.mean(r_precs).tolist(),
@@ -122,8 +133,9 @@ def get_eval(res_dir, top_n=5):
         'recall': np.mean(c_recs).tolist(),
         'f1': np.mean(c_f1s).tolist()
     }
-    res = {'row': row_stats, 'col': col_stats}
-    
+
+    res = {'row': row_stats, 'col': col_stats, 'top_n_high_f1': top_n_high_f1, 'top_n_low_f1': top_n_low_f1}
+
     write_json(os.path.join(res_dir, 'stats.json'), res)
     print('Done!')
 
