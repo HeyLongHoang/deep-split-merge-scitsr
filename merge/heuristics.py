@@ -4,6 +4,7 @@ import cv2 as cv
 import json
 import numpy as np
 import torch
+import copy
 
 class Cell:
     def __init__(self, top, left, bottom, right):
@@ -28,18 +29,18 @@ def borders(x):
     Args:
     x -- binary numpy array of shape (N,)
     Returns:
-    idxs -- numpy array containing the indexes of x where values change from 0 to 1 or vice versa
+    borders -- numpy array containing the indexes of x where values change from 0 to 1 or vice versa
     '''
     x = x.astype(np.int8)
     changes = np.array([abs(x[i+1] - x[i]) for i in range(len(x)-1)])
-    idxs = np.where(changes == 1)[0]
+    borders = np.where(changes == 1)[0]
     # when first cell is right at the beginning
     if x[0] == 0:
-        idxs = np.concatenate(([0], idxs))
+        borders = np.concatenate(([0], borders))
     # when last cell is at the end
-    if len(idxs) % 2 != 0: # NOTE: check this again
-        idxs = np.concatenate((idxs, [len(x) - 1]))
-    return idxs
+    if len(borders) % 2 != 0: # NOTE: check this again
+        borders = np.concatenate((borders, [len(x) - 1]))
+    return borders
 
 def get_cells(row_borders, col_borders):
     '''
@@ -152,6 +153,7 @@ def rule2(cells, texts_pos, R_pred, D_pred, verbose=False):
         if x == 0 and rn and R_pred is not None: # first row and has right neighbour
             # if right cell is blank and current cell is non-blank, merge right
             if not is_blank(id, cells, texts_pos) and is_blank(rn, cells, texts_pos):
+            # if is_blank(rn, cells, texts_pos):
                 R_pred[x, y] = 1
                 if verbose: print(f'Merge right at cell ({x},{y})')
 
@@ -189,13 +191,14 @@ def merge_cells(cells, R, D, verbose=False):
         if rn_id and R is not None and R[x, y] == 1:
             if verbose: print(f'Merge right at cell ({x},{y})')
             cells_mgr.append(merge_right(cell, cells[rn_id]))
-            checked.append(rn_id)
+            # checked.append(rn_id)
         elif dn_id and D is not None and D[x, y] == 1:
             if verbose: print(f'Merge down at cell ({x},{y})')
             cells_mgr.append(merge_down(cell, cells[dn_id]))
-            checked.append(dn_id)
+            # checked.append(dn_id)
         else:
             cells_mgr.append(cell)
+        checked.append(id)
     return cells_mgr
 
 def IoU(cell_1, cell_2):
@@ -204,8 +207,8 @@ def IoU(cell_1, cell_2):
 
     # Check for invalid bounding boxes
     if t1 >= b1 or l1 >= r1 or t2 >= b2 or l2 >= r2:
-        print('Coordinates of the cells are invalid')
-        return 0.0
+        # print('Coordinates of the cells are invalid')
+        return -1
 
     inner_top, inner_left = max(t1, t2), max(l1, l2)
     inner_bot, inner_right = min(b1, b2), min(r1, r2)
@@ -221,16 +224,18 @@ def IoU(cell_1, cell_2):
     else:
         return 0.0
     
-def eval(cells_pred, cells_label, threshold=0.7):
+def eval(cells_pred, cells_label, threshold=0.7, img_name=None):
     '''Returns F1, recall, and precision score'''
     n_correct_preds = 0
     n_preds, n_true = len(cells_pred), len(cells_label)
+    flag_error = False
 
     # Count true positives, false positives, and false negatives
     for pred_box in cells_pred:
         max_iou = 0
         for true_box in cells_label:
             iou = IoU(pred_box, true_box)
+            if iou == -1: flag_error = True
             if iou > max_iou:
                 max_iou = iou
 
@@ -241,5 +246,7 @@ def eval(cells_pred, cells_label, threshold=0.7):
     precision = n_correct_preds / n_preds if n_preds > 0 else 0.0
     recall = n_correct_preds / n_true if n_true > 0 else 0.0
     f1 = 2 * (precision * recall) / (precision + recall) if (precision + recall) > 0 else 0.0
-
-    return f1, recall, precision
+    if flag_error is True and img_name is not None:
+        # print(f'Image {img_name} has cells with wrong coordinates')
+        return f1, recall, precision, img_name
+    return f1, recall, precision, None
