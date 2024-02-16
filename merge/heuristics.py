@@ -7,13 +7,16 @@ import torch
 import copy
 
 class Cell:
-    def __init__(self, top, left, bottom, right):
+    def __init__(self, top, left, bottom, right, content=None):
         self.top = top
         self.left = left
         self.bottom = bottom
         self.right = right
         self.pos = (top, left), (bottom, right)
-    def __str__(self):
+        self.content = content
+    def __repr__(self):
+        if self.content is not None:
+            return f"t={self.top}, l={self.left}, b={self.bottom}, r={self.right}, content='{self.content}'"
         return f"t={self.top}, l={self.left}, b={self.bottom}, r={self.right}"
 
 def load_merge_gt(merge_labels, img_name):
@@ -105,7 +108,7 @@ def check_merge_right(id, id_r, cells, texts_pos):
     (t1, l1), (b1, r1) = cells[id].pos
     (t2, l2), (b2, r2) = cells[id_r].pos
     for text, (l, t, r, b) in texts_pos:
-        if l < r1 and l2 < r and (t1 < t < b1 or t1 < b < b1):
+        if l < r1 and l2 < r and (t1 < t < b1 or t1 < b < b1 or (t < t1 and b > b1)):
             return True
     return False
 
@@ -113,7 +116,7 @@ def check_merge_down(id, id_d, cells, texts_pos):
     (t1, l1), (b1, r1) = cells[id].pos
     (t2, l2), (b2, r2) = cells[id_d].pos
     for text, (l, t, r, b) in texts_pos:
-        if t < b1 and t2 < b and (l1 < l < r1 or l1 < r < r1):
+        if t < b1 and t2 < b and (l1 < l < r1 or l1 < r < r1 or (l < l1 and r > r1)):
             return True
     return False
 
@@ -165,41 +168,42 @@ def rule2(cells, texts_pos, R_pred, D_pred, verbose=False):
 def merge_right(cell, cell_right):
     (t1, l1), (b1, r1) = cell.pos
     (t2, l2), (b2, r2) = cell_right.pos
-    assert t1 == t2 and b1 == b2, "Top and bottom of two cells don't match when merging right"
-    assert l1 <= r2, "Cell to merge right is to the left of current cell"
+    assert t1 == t2 and b1 == b2, f"Top and bottom of two cells don't match when merging right: {cell} & {cell_right}"
+    assert l1 <= r2, "Cell to merge right is to the left of current cell: {cell} & {cell_right}"
     return Cell(t1, l1, b1, r2)
 
 def merge_down(cell, cell_down):
     (t1, l1), (b1, r1) = cell.pos
     (t2, l2), (b2, r2) = cell_down.pos
-    assert l1 == l2 and r1 == r2, "Left and right boundaries of two cells don't match when merging down"
-    assert b1 <= t2, "Cell to merge down is not just below the current cell"
+    assert l1 == l2 and r1 == r2, f"Left and right boundaries of two cells don't match when merging down: {cell} & {cell_down}"
+    assert b1 <= t2, "Cell to merge down is not just below the current cell: {cell} & {cell_down}"
     return Cell(t1, l1, b2, r1)
 
 def merge_cells(cells, R, D, verbose=False):
-    cells_mgr = []
-    checked = []
+    cells = copy.deepcopy(cells)
     n_rows, n_cols = get_shape(R, D)
     assert len(cells) == n_rows * n_cols, "Shape of R and D don't match the number of cells"
 
-    # if len(cells) != n_rows * n_cols:
-    #     n_cols = len(cells) // n_rows
-    for id, cell in enumerate(cells):
-        if id in checked: continue
-        x, y = id2coord(id, n_cols)
-        rn_id, dn_id = neighbor_RD(id, n_rows, n_cols)
-        if rn_id and R is not None and R[x, y] == 1:
+    for i in range(len(cells)-1, -1, -1):
+        cell = cells[i]
+        x, y = id2coord(i, n_cols)
+        rn_id, dn_id = neighbor_RD(i, n_rows, n_cols)
+        to_remove = False
+
+        if rn_id is not None and R is not None and R[x, y] == 1:
             if verbose: print(f'Merge right at cell ({x},{y})')
-            cells_mgr.append(merge_right(cell, cells[rn_id]))
-            # checked.append(rn_id)
-        elif dn_id and D is not None and D[x, y] == 1:
+            cells[rn_id] = merge_right(cell, cells[rn_id])
+            to_remove = True
+        
+        if dn_id is not None and D is not None and D[x, y] == 1:
             if verbose: print(f'Merge down at cell ({x},{y})')
-            cells_mgr.append(merge_down(cell, cells[dn_id]))
-            # checked.append(dn_id)
-        else:
-            cells_mgr.append(cell)
-        checked.append(id)
-    return cells_mgr
+            cells[dn_id] = merge_down(cell, cells[dn_id])
+            to_remove = True
+
+        if to_remove:
+            cells.pop(i)
+            
+    return cells
 
 def IoU(cell_1, cell_2):
     (t1, l1), (b1, r1) = cell_1.pos

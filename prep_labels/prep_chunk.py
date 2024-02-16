@@ -71,7 +71,7 @@ def main():
     p = argparse.ArgumentParser()
     p.add_argument('--scitsr_dir',
                    type=str,
-                   help='Path to train or test folder of SciTSR dataset')
+                   help='Path to train, val, or test folder of SciTSR dataset')
     p.add_argument('--chunk_json', 
                    type=str, 
                    help='Path the the ground truth file')
@@ -110,7 +110,7 @@ def main():
                 bottom_right = (pos[2], pos[3])
                 cv.rectangle(img_draw, left_top, bottom_right, (0, 0, 255), 1)
             # view_imgs([img_draw])
-            print(f'- Processed {i+1} images up until now!')
+            print(f'- Processed {i+1} images!')
 
     # Dump chunk info
     with open(arg.chunk_json, 'w') as f:
