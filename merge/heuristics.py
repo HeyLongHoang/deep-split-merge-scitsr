@@ -16,8 +16,14 @@ class Cell:
         self.content = content
     def __repr__(self):
         if self.content is not None:
-            return f"t={self.top}, l={self.left}, b={self.bottom}, r={self.right}, content='{self.content}'"
-        return f"t={self.top}, l={self.left}, b={self.bottom}, r={self.right}"
+            return f"Cell[t={self.top}, l={self.left}, b={self.bottom}, r={self.right}, content='{self.content}']"
+        return f"Cell[t={self.top}, l={self.left}, b={self.bottom}, r={self.right}]"
+    def overlap(self, other):
+        return not (self.right < other.left or
+                    self.left > other.right or
+                    self.bottom < other.top or
+                    self.top > other.bottom)
+
 
 def load_merge_gt(merge_labels, img_name):
     '''Load merge ground truth for an image'''
@@ -179,31 +185,64 @@ def merge_down(cell, cell_down):
     assert b1 <= t2, "Cell to merge down is not just below the current cell: {cell} & {cell_down}"
     return Cell(t1, l1, b2, r1)
 
+### THIS PART MIGHT POTENTIALLY BE IMPROVED ###
+
+def _merge_overlap(cells):
+    """
+    Merge overlapping cells in a list.
+    Params:
+    - cells: List of Cell objects.
+    Returns:
+    - List of merged Cell objects.
+    """
+    merged_cells = []
+
+    for i, cell in enumerate(cells):
+        is_merged = False
+
+        for j, merged_cell in enumerate(merged_cells):
+            if cell.overlap(merged_cell):
+                # Merge overlapping cells
+                merged_cells[j] = Cell(min(cell.top, merged_cell.top),
+                                       min(cell.left, merged_cell.left),
+                                       max(cell.bottom, merged_cell.bottom),
+                                       max(cell.right, merged_cell.right))
+                is_merged = True
+                break
+
+        if not is_merged:
+            # Add the non-overlapping cell to the merged_cells list
+            merged_cells.append(cell)
+
+    return merged_cells
+
 def merge_cells(cells, R, D, verbose=False):
+    merged_cells = []
     cells = copy.deepcopy(cells)
     n_rows, n_cols = get_shape(R, D)
-    assert len(cells) == n_rows * n_cols, "Shape of R and D don't match the number of cells"
 
-    for i in range(len(cells)-1, -1, -1):
-        cell = cells[i]
+    if len(cells) != n_rows * n_cols:
+        print("ERROR: Shape of R and D don't match the number of cells")
+        return None
+    
+    for i, cell in enumerate(cells):
         x, y = id2coord(i, n_cols)
         rn_id, dn_id = neighbor_RD(i, n_rows, n_cols)
-        to_remove = False
 
-        if rn_id is not None and R is not None and R[x, y] == 1:
+        if (rn_id is not None) and (R is not None) and R[x, y] == 1:
             if verbose: print(f'Merge right at cell ({x},{y})')
-            cells[rn_id] = merge_right(cell, cells[rn_id])
-            to_remove = True
-        
-        if dn_id is not None and D is not None and D[x, y] == 1:
-            if verbose: print(f'Merge down at cell ({x},{y})')
-            cells[dn_id] = merge_down(cell, cells[dn_id])
-            to_remove = True
-
-        if to_remove:
-            cells.pop(i)
+            merged_cells.append(merge_right(cell, cells[rn_id]))
             
-    return cells
+        elif (dn_id is not None) and (D is not None) and D[x, y] == 1:
+            if verbose: print(f'Merge down at cell ({x},{y})')
+            merged_cells.append(merge_down(cell, cells[dn_id]))
+        
+        else:
+            merged_cells.append(cell)
+
+    return _merge_overlap(merged_cells)
+
+######################################################
 
 def IoU(cell_1, cell_2):
     (t1, l1), (b1, r1) = cell_1.pos
