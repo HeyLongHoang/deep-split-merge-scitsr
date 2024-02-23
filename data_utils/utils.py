@@ -70,9 +70,9 @@ def prep_image(img: np.array):
     '''Turn numpy array into torch tensor ready to process by model'''
     return torch.tensor(img / 255.).permute(2,0,1).float().unsqueeze(0)
 
-def process_split_results(r_pred: torch.tensor, c_pred: torch.tensor):
-    r = r_pred[-1] > 0.5
-    c = c_pred[-1] > 0.5
+def process_split_results(r_pred: torch.tensor, c_pred: torch.tensor, th=0.5):
+    r = r_pred[-1] > th
+    c = c_pred[-1] > th
     c = c.cpu().detach().numpy().astype(np.uint8)
     r = r.cpu().detach().numpy().astype(np.uint8)
     return r, c

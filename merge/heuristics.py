@@ -24,6 +24,11 @@ class Cell:
                     self.bottom < other.top or
                     self.top > other.bottom)
 
+def load_split_gt(split_labels, img_name):
+    '''Load split ground truth for an image'''
+    r_gt = np.array(split_labels[img_name]['rows'])
+    c_gt = np.array(split_labels[img_name]['columns'])
+    return r_gt, c_gt
 
 def load_merge_gt(merge_labels, img_name):
     '''Load merge ground truth for an image'''
