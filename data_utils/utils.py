@@ -5,6 +5,7 @@ import cv2 as cv
 import json
 import numpy as np
 import torch
+import copy
 
 def view_imgs(imgs, titles=None):
     fig = plt.figure(figsize=(7, 7))
@@ -134,3 +135,34 @@ def eval3(x_pred, x_gt):
         'precision': prec, 'recall': rec, 'f1': f1
     }
     return res
+
+def update_cells_content(cells, texts_pos):
+    '''
+    Update contents of cells based on positions of texts
+    Args:
+        cells -- list of Cells
+        texts_pos -- contents and positions of texts
+    Returns:
+        cells -- a deep copy of cells containing texts information
+    '''
+    cells = copy.deepcopy(cells)
+    for cell in cells:
+        cell_t, cell_l, cell_b, cell_r = cell.top, cell.left, cell.bottom, cell.right
+        for content, (text_l, text_t, text_r, text_b) in texts_pos:
+            if (text_l >= cell_l or cell_l - text_l <= 10) and \
+                (text_t >= cell_t or cell_t - text_t <= 10) and \
+                (text_r <= cell_r or text_r - cell_r <= 10) and \
+                (text_b <= cell_b or text_b - cell_b <= 10):
+                cell.content = content
+    return cells
+
+def vis_cells(img, cells, color='blue', thickness=1):
+    img = img.copy()
+    if color == 'blue': c = (0,0,255)
+    elif color == 'green': c = (0,255,0)
+    elif color == 'red': c = (255,0,0)
+    else: c = (0,0,255)
+    for cell in cells:
+        lt, rb = (cell.left, cell.top), (cell.right, cell.bottom)
+        cv.rectangle(img, lt, rb, c, thickness)
+    return img

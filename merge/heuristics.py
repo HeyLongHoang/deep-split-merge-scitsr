@@ -96,6 +96,8 @@ def get_shape(R, D):
         num_cols = D.shape[1]
     else:
         print('ERROR: Both R and D matrices are None')
+        print('N. rows:', num_rows)
+        print('N. cols:', num_cols)
     return num_rows, num_cols
 
 #######################################################################################
@@ -227,7 +229,8 @@ def merge_cells(cells, R, D, verbose=False):
     n_rows, n_cols = get_shape(R, D)
 
     if len(cells) != n_rows * n_cols:
-        print("ERROR: Shape of R and D don't match the number of cells")
+        if verbose: 
+            print("ERROR: Shape of R and D don't match the number of cells")
         return None
     
     for i, cell in enumerate(cells):
