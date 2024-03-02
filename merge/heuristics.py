@@ -100,6 +100,27 @@ def get_shape(R, D):
         print('N. cols:', num_cols)
     return num_rows, num_cols
 
+def neighbor_top(idx, num_rows, num_cols):
+    '''Returns index for the top neighbor'''
+    idx_top = idx - num_cols if idx >= num_cols else None
+    return idx_top
+
+def neighbor_left(idx, num_rows, num_cols):
+    '''Returns index for the left neighbor'''
+    idx_left = idx - 1 if idx % num_cols != 0 else None
+    return idx_left
+
+def neighbor_right(idx, num_rows, num_cols):
+    '''Returns index for the right neighbor'''
+    idx_right = idx + 1 if (idx + 1) % num_cols != 0 else None
+    return idx_right
+
+def neighbor_down(idx, num_rows, num_cols):
+    '''Returns index for the down neighbor'''
+    idx_down = idx + num_cols if (idx + num_cols) < (num_rows * num_cols) else None
+    return idx_down
+
+
 #######################################################################################
 ### RULE 1: Merge cells where predicted seperator passes through text #################
 #######################################################################################
@@ -117,33 +138,39 @@ def neighbor_RD(idx, num_rows, num_cols):
     return idx_right, idx_down
 
 # NOTE: these two functions are not quite efficient yet
-def check_merge_right(id, id_r, cells, texts_pos):
+def check_merge_right(id, id_r, cells, texts_pos, use_margin=True, margin_perc=0.1, margin_max=5):
     (t1, l1), (b1, r1) = cells[id].pos
     (t2, l2), (b2, r2) = cells[id_r].pos
     for text, (l, t, r, b) in texts_pos:
-        if l < r1 and l2 < r and (t1 < t < b1 or t1 < b < b1 or (t < t1 and b > b1)):
+        margin = min(margin_max, int(margin_perc * abs(r - l))) if use_margin else 0      
+        if (l - margin) < r1 and \
+            l2 < (r + margin) and \
+            (t1 < t < b1 or t1 < b < b1 or (t < t1 and b > b1)):
             return True
     return False
 
-def check_merge_down(id, id_d, cells, texts_pos):
+def check_merge_down(id, id_d, cells, texts_pos, use_margin=True, margin_perc=0.1, margin_max=5):
     (t1, l1), (b1, r1) = cells[id].pos
     (t2, l2), (b2, r2) = cells[id_d].pos
     for text, (l, t, r, b) in texts_pos:
-        if t < b1 and t2 < b and (l1 < l < r1 or l1 < r < r1 or (l < l1 and r > r1)):
+        margin = min(margin_max, int(margin_perc * abs(b - t))) if use_margin else 0 
+        if (t - margin) < b1 and \
+            t2 < (b + margin) and \
+            (l1 < l < r1 or l1 < r < r1 or (l < l1 and r > r1)):
             return True
     return False
 
-def rule1(cells, texts_pos, R_pred, D_pred, verbose=False):
+def rule1(cells, texts_pos, R_pred, D_pred, verbose=False, **kwargs):
     '''Inplace updates prediction matrices R and D'''
     num_rows, num_cols = get_shape(R_pred, D_pred)
     
     for id, cell in enumerate(cells):
         x, y = id2coord(id, num_cols)
         rn, dn = neighbor_RD(id, num_rows, num_cols)
-        if rn and R_pred is not None and check_merge_right(id, rn, cells, texts_pos):
+        if rn and R_pred is not None and check_merge_right(id, rn, cells, texts_pos, **kwargs):
             R_pred[x, y] = 1
             if verbose: print(f'Merge right at cell ({x},{y})')
-        if dn and D_pred is not None and check_merge_down(id, dn, cells, texts_pos):
+        if dn and D_pred is not None and check_merge_down(id, dn, cells, texts_pos, **kwargs):
             D_pred[x, y] = 1
             if verbose: print(f'Merge down at cell ({x},{y})')
 

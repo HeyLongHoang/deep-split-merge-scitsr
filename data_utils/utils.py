@@ -8,7 +8,7 @@ import torch
 import copy
 
 def view_imgs(imgs, titles=None):
-    fig = plt.figure(figsize=(7, 7))
+    fig = plt.figure(figsize=(50, 50))
     for i, img in enumerate(imgs):
         plt.subplot(1, len(imgs), i + 1)
         if titles is not None:
@@ -159,10 +159,16 @@ def update_cells_content(cells, texts_pos):
 def vis_cells(img, cells, color='blue', thickness=1):
     img = img.copy()
     if color == 'blue': c = (0,0,255)
-    elif color == 'green': c = (0,255,0)
+    elif color == 'green': c = (0,200,0)
     elif color == 'red': c = (255,0,0)
     else: c = (0,0,255)
     for cell in cells:
         lt, rb = (cell.left, cell.top), (cell.right, cell.bottom)
         cv.rectangle(img, lt, rb, c, thickness)
+    return img
+
+def vis_chunks(img, chunks, color=(100, 100, 100)):
+    img = img.copy()
+    for text, (l, t, r, b) in chunks:
+        cv.rectangle(img, (l, t), (r, b), color, 1)
     return img
