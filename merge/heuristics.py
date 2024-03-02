@@ -14,15 +14,36 @@ class Cell:
         self.right = right
         self.pos = (top, left), (bottom, right)
         self.content = content
+        self.is_blank = None
+
     def __repr__(self):
         if self.content is not None:
             return f"Cell[t={self.top}, l={self.left}, b={self.bottom}, r={self.right}, content='{self.content}']"
         return f"Cell[t={self.top}, l={self.left}, b={self.bottom}, r={self.right}]"
+    
     def overlap(self, other):
         return not (self.right < other.left or
                     self.left > other.right or
                     self.bottom < other.top or
                     self.top > other.bottom)
+    
+    def update_blank(self, texts_pos):
+        '''Update whether the cell is blank or not'''
+        self.is_blank = True
+
+        for text, (l, t, r, b) in texts_pos:
+            if (self.top < b and self.bottom > t) and (self.left < r and self.right > l):
+                self.is_blank = False
+                break  # If overlap is found, no need to check further
+
+        # for content, (text_l, text_t, text_r, text_b) in texts_pos:
+        #     if (text_l >= self.left or self.left - text_l <= margin) and \
+        #         (text_t >= self.top or self.top - text_t <= margin) and \
+        #         (text_r <= self.right or text_r - self.right <= margin) and \
+        #         (text_b <= self.bottom or text_b - self.bottom <= margin) \
+        #     :
+        #         self.is_blank = False
+        #         break
 
 def load_split_gt(split_labels, img_name):
     '''Load split ground truth for an image'''
@@ -138,22 +159,39 @@ def neighbor_RD(idx, num_rows, num_cols):
     return idx_right, idx_down
 
 # NOTE: these two functions are not quite efficient yet
-def check_merge_right(id, id_r, cells, texts_pos, use_margin=True, margin_perc=0.1, margin_max=5):
+def check_merge_right(id, id_r, cells, texts_pos, margin_perc=0.5, margin_max=5):
+    if cells[id].is_blank is None:
+        cells[id].update_blank(texts_pos)
+    if cells[id_r].is_blank is None:
+        cells[id_r].update_blank(texts_pos)
+
     (t1, l1), (b1, r1) = cells[id].pos
     (t2, l2), (b2, r2) = cells[id_r].pos
     for text, (l, t, r, b) in texts_pos:
-        margin = min(margin_max, int(margin_perc * abs(r - l))) if use_margin else 0      
+        # apply margin to the text bounding box when one of the cells is blank
+        margin = min(margin_max, int(margin_perc * abs(r - l))) \
+            if cells[id_r].is_blank \
+            else 0      
         if (l - margin) < r1 and \
             l2 < (r + margin) and \
             (t1 < t < b1 or t1 < b < b1 or (t < t1 and b > b1)):
             return True
     return False
 
-def check_merge_down(id, id_d, cells, texts_pos, use_margin=True, margin_perc=0.1, margin_max=5):
+def check_merge_down(id, id_d, cells, texts_pos, margin_perc=0.5, margin_max=5):
+    # update cell blank information upfront to remove complexity
+    if cells[id].is_blank is None:
+        cells[id].update_blank(texts_pos)
+    if cells[id_d].is_blank is None:
+        cells[id_d].update_blank(texts_pos)
+
     (t1, l1), (b1, r1) = cells[id].pos
     (t2, l2), (b2, r2) = cells[id_d].pos
     for text, (l, t, r, b) in texts_pos:
-        margin = min(margin_max, int(margin_perc * abs(b - t))) if use_margin else 0 
+        # apply margin to the text bouding box when one of the cells is blank
+        margin = min(margin_max, int(margin_perc * abs(b - t))) \
+            if cells[id_d].is_blank \
+            else 0
         if (t - margin) < b1 and \
             t2 < (b + margin) and \
             (l1 < l < r1 or l1 < r < r1 or (l < l1 and r > r1)):
@@ -179,26 +217,89 @@ def rule1(cells, texts_pos, R_pred, D_pred, verbose=False, **kwargs):
 ###         merge non-blank cells with adjacent blank cells ###########################
 #######################################################################################
 
-def is_blank(id, cells, texts_pos):
-    (top, left), (bottom, right) = cells[id].pos
-    for text, (l, t, r, b) in texts_pos:
-        if (top < b and bottom > t) and (left < r and right > l):
-            return False
-    return True
-
 def rule2(cells, texts_pos, R_pred, D_pred, verbose=False):
     # NOTE: currently only merge right for cells in the first
     #       row if its right neighbour is blank to avoid ambiguity
     num_rows, num_cols = get_shape(R_pred, D_pred)
     for id, cell in enumerate(cells):
+        if id == 0: continue
         x, y = id2coord(id, num_cols)
         rn, _ = neighbor_RD(id, num_rows, num_cols)
+
+        if cells[id].is_blank is None: cells[id].update_blank(texts_pos)
+
         if x == 0 and rn and R_pred is not None: # first row and has right neighbour
+            if cells[rn].is_blank is None: cells[rn].update_blank(texts_pos)
             # if right cell is blank and current cell is non-blank, merge right
-            if not is_blank(id, cells, texts_pos) and is_blank(rn, cells, texts_pos):
+            if not cells[id].is_blank and cells[rn].is_blank:
             # if is_blank(rn, cells, texts_pos):
                 R_pred[x, y] = 1
                 if verbose: print(f'Merge right at cell ({x},{y})')
+
+#######################################################################################
+### RULE 3 (INVENTED): If there are text between two blank cells,                   ###
+###         then merge them together                                                ###
+#######################################################################################
+                
+def satisfies_rule3_right(cell1, cell2, texts_pos):
+    if not cell1.is_blank or not cell2.is_blank:
+        return False
+    
+    for _, (l, t, r, b) in texts_pos:
+        if (b < cell1.top and b < cell2.top) or \
+           (t > cell1.bottom and t > cell2.bottom):
+            continue
+        if (cell1.right <= l and r <= cell2.left) or \
+           (cell2.right <= l and r <= cell1.left):
+            return True
+        
+    return False
+
+def satisfies_rule3_down(cell1, cell2, texts_pos):
+    if not cell1.is_blank or not cell2.is_blank:
+        return False
+    
+    for _, (l, t, r, b) in texts_pos:
+        if (r < cell1.left and r < cell2.left) or \
+           (l > cell1.right and l > cell2.right):
+            continue
+        if (cell1.bottom <= t and b <= cell2.top) or \
+           (cell2.bottom <= t and b <= cell1.top):
+            return True
+        
+    return False
+
+def rule3(cells, texts_pos, R_pred, D_pred, verbose=False):
+    num_rows, num_cols = get_shape(R_pred, D_pred)
+    for id, cell in enumerate(cells):
+        # update current cell info
+        if cells[id].is_blank is None: 
+            cells[id].update_blank(texts_pos)
+        x, y = id2coord(id, num_cols)
+
+        # update right and down neighbors info if necessary
+        rn, dn = neighbor_RD(id, num_rows, num_cols)
+        if rn and cells[rn].is_blank is None:
+            cells[rn].update_blank(texts_pos)
+        if dn and cells[dn].is_blank is None:
+            cells[dn].update_blank(texts_pos)
+
+        # check right neighbor condition
+        if rn and R_pred is not None and \
+            cell.is_blank and cells[rn].is_blank and \
+            satisfies_rule3_right(cell, cells[rn], texts_pos) \
+        :
+            R_pred[x, y] = 1
+            if verbose: print(f'Merge right at cell ({x},{y})')
+
+        # check down neighbor condition
+        if dn and D_pred is not None and \
+            cell.is_blank and cells[dn].is_blank and \
+            satisfies_rule3_down(cell, cells[dn], texts_pos) \
+        :
+            D_pred[x, y] = 1
+            if verbose: print(f'Merge down at cell ({x},{y})')
+
 
 #######################################################################################
 ### RULES END #######################################################################
