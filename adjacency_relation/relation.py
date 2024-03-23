@@ -195,7 +195,7 @@ def write_list_txt(file_path, string_list):
         print(f"Error writing to {file_path}: {e}")
 
 @torch.no_grad
-def process_relations(model: SplitModel, part_dir: str, error_path=None):
+def process_relations(model: SplitModel, part_dir: str, error_path=None, selected_images=None):
     '''
     Args:
         model -- trained Split model
@@ -218,6 +218,9 @@ def process_relations(model: SplitModel, part_dir: str, error_path=None):
 
     gt, pred = {}, {}
     for img, _, name in tqdm(dataset):
+        if selected_images is not None and name not in selected_images:
+            continue
+        image = img.squeeze().permute(1,2,0).detach().cpu().numpy()
 
         # ground truth
         r_gt, c_gt, R_gt, D_gt = load_merge_gt(merge_labels, name)
@@ -238,8 +241,13 @@ def process_relations(model: SplitModel, part_dir: str, error_path=None):
         # merge heuristics
         texts_pos = chunk_labels[name]
         R_pred, D_pred = create_pred_matrices(row_pred_idxs, col_pred_idxs)
+
         rule1(cells_pred, texts_pos, R_pred, D_pred)
-        rule2(cells_pred, texts_pos, R_pred, D_pred)
+        rule2(cells_pred, texts_pos, image, R_pred)
+        rule3(cells_pred, texts_pos, R_pred)
+        rule5(cells_pred, texts_pos, image, D_pred)
+        rule6(cells_pred, texts_pos, R_pred, D_pred)
+
         cells_merged_pred = merge_cells(cells_pred, R_pred, D_pred, verbose=False)
 
         # adjacency relation
@@ -251,7 +259,10 @@ def process_relations(model: SplitModel, part_dir: str, error_path=None):
         pred[name] = rels_pred
         
     print('Finished processing relations')
-    print(f'Found {len(error_names)}/{len(dataset)} images with label error stored at {error_path}')
+    if selected_images:
+        print(f'Found {len(error_names)}/{len(selected_images)} images with label error stored at {error_path}')
+    else:
+        print(f'Found {len(error_names)}/{len(dataset)} images with label error stored at {error_path}')
     if error_path is not None:
         write_list_txt(error_path, error_names)
     

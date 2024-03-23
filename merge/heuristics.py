@@ -152,6 +152,10 @@ def id2coord(id, n_cols):
     y = id % n_cols
     return x, y
 
+def coord2id(x, y, n_cols):
+    '''Converts (x, y) to index'''
+    return x * n_cols + y
+
 def neighbor_RD(idx, num_rows, num_cols):
     '''Returns indexes for right and down neighbours'''
     idx_right = idx + 1 if (idx + 1) % num_cols != 0 else None
@@ -217,31 +221,198 @@ def rule1(cells, texts_pos, R_pred, D_pred, verbose=False, **kwargs):
 ###         merge non-blank cells with adjacent blank cells ###########################
 #######################################################################################
 
-def rule2(cells, texts_pos, R_pred, D_pred, verbose=False):
-    # NOTE: currently only merge right for cells in the first
-    #       row if its right neighbour is blank to avoid ambiguity
-    num_rows, num_cols = get_shape(R_pred, D_pred)
-    for id, cell in enumerate(cells):
-        if id == 0: continue
-        x, y = id2coord(id, num_cols)
-        rn, _ = neighbor_RD(id, num_rows, num_cols)
+def has_col_sep_between(col1, col2, row, cells, image, n_cols):
+    img = invert_threshold(image)
+    cell1 = cells[coord2id(row, col1, n_cols)]
+    cell2 = cells[coord2id(row, col2, n_cols)]
+    assert cell1.top == cell2.top and cell1.bottom == cell2.bottom, 'The two cells should have the same top and bottom coordinates'
 
-        if cells[id].is_blank is None: cells[id].update_blank(texts_pos)
+    if cell1.right < cell2.left:
+        area = img[cell1.top : cell1.bottom, cell1.right : cell2.left]
+    elif cell2.right < cell1.left:
+        area = img[cell1.top : cell1.bottom, cell2.right : cell1.left]
+    else:
+        print('The two cells overlap', cell1, cell2)
+        return None
+    has_sep = (area.mean(axis=0).max() == 1.0)
+    return has_sep
+            
+def find_nearest_non_blank_col(cells, row, col, texts_pos, image, n_cols):
+    # update blank info of cells in the 1st row if necessary
+    for c in range(0, n_cols):
+        id = coord2id(row, c, n_cols) # id of cells in the first row
+        if cells[id].is_blank is None:
+            cells[id].update_blank(texts_pos)
 
-        if x == 0 and rn and R_pred is not None: # first row and has right neighbour
-            if cells[rn].is_blank is None: cells[rn].update_blank(texts_pos)
-            # if right cell is blank and current cell is non-blank, merge right
-            if not cells[id].is_blank and cells[rn].is_blank:
-            # if is_blank(rn, cells, texts_pos):
-                R_pred[x, y] = 1
-                if verbose: print(f'Merge right at cell ({x},{y})')
+    # search for the nearest non-blank cell in the first row
+    nearest_col = -1
+    best_dist = 100000
+    for c in range(0, n_cols):
+        if cells[coord2id(row, c, n_cols)].is_blank or has_col_sep_between(c, col, row, cells, image, n_cols):
+            continue
+        dist = abs(col - c)
+        if dist < best_dist:
+            nearest_col = c
+            best_dist = dist
+    return nearest_col
+
+def rule2(cells, texts_pos, image, R_pred, verbose=False, only_first_row=True):
+    if R_pred is None: return
+    n_rows, n_cols = R_pred.shape[0], R_pred.shape[1]+1
+
+    if only_first_row:
+        rows = [0]
+    else:
+        rows = range(n_rows)
+
+    # check conditions and merge
+    for row in rows:
+        for col in range(1, n_cols):
+            id = coord2id(row, col, n_cols) 
+            if cells[id].is_blank is None:
+                cells[id].update_blank(texts_pos)
+            if cells[id].is_blank:
+                nearest_col = find_nearest_non_blank_col(cells, row, col, texts_pos, image, n_cols)
+                if nearest_col == -1: continue
+                elif nearest_col <= col:
+                    R_pred[row, nearest_col:col] = 1
+                    if verbose: print(f'Merge cells from {nearest_col} to {col} in the first row')
+                else:
+                    R_pred[row, col:nearest_col] = 1
+                    if verbose: print(f'Merge cells from {col} to {nearest_col} in the first row')
 
 #######################################################################################
-### RULE 3 (INVENTED): If there are text between two blank cells,                   ###
+### RULE 3: Merge adjacent columns when the vast majority of paired cells           ###
+###         (after row 3) are either both blank or only one cell per pair           ###
+###         is non-blank. This merge a content column with a (mostly) blank column  ###
+#######################################################################################
+
+'''
+Notes there is some modification. I compared pairs of cells starting from row 1 (not 3)
+as it worked better empirically.
+'''
+                
+def satisfies_rule_3(cells, col, texts_pos, n_rows, n_cols, th_perc, start_row):
+    # checks if the column 'col' and its right column have a majority of blank cells
+    cnt = 0
+    total = n_rows - start_row
+    for row in range(start_row, n_rows):
+        id_l, id_r = coord2id(row, col, n_cols), coord2id(row, col+1, n_cols)
+        
+        # update cells' blank info if necessary
+        if cells[id_l].is_blank is None:
+            cells[id_l].update_blank(texts_pos)
+        if cells[id_r].is_blank is None:
+            cells[id_r].update_blank(texts_pos)
+        
+        # check rule 3 condition
+        if (cells[id_l].is_blank and cells[id_r].is_blank) or \
+           (not cells[id_l].is_blank and cells[id_r].is_blank) \
+        :
+            cnt += 1
+    return (cnt / total) >= th_perc
+
+def rule3(cells, texts_pos, R_pred, th_perc=0.66, verbose=False, start_row=1):
+    # this function handles over-splitting problem of Split module
+    if R_pred is None: 
+        return
+    n_rows = R_pred.shape[0]
+    n_cols = R_pred.shape[1] + 1
+    if n_rows <= start_row: 
+        return
+
+    for col in range(n_cols-1):
+        if satisfies_rule_3(cells, col, texts_pos, n_rows, n_cols, th_perc, start_row):
+            R_pred[1:, col] = 1 # rule 2 takes care of header row so this is skipped
+            if verbose: print(f'Merge column {col} with column {col+1} (indexing starts at 0)')
+
+#######################################################################################
+### RULE 4: Split columns that have a consistent whitespace gap between             ###
+###         vertically aligned texts                                                ###
+#######################################################################################
+            
+# TODO
+            
+#######################################################################################
+### RULE 5 (INVENTED): For the first column, merge blank cells                      ###
+###                    with the nearest non-blank cells such that there is no       ###
+###                    seperator between them                                       ###
+#######################################################################################
+            
+def invert_threshold(img):
+    '''Threhold an image and then invert values'''
+    img_gray = cv.cvtColor(img, cv.COLOR_RGB2GRAY)
+    th = 128
+    _, img_th = cv.threshold(img_gray, th, 255, cv.THRESH_BINARY)
+    img_inv = cv.bitwise_not(img_th) / 255.
+    return img_inv
+            
+def has_row_sep_between(row1, row2, col, cells, image, n_cols):
+    img = invert_threshold(image)
+    cell1 = cells[coord2id(row1, col, n_cols)]
+    cell2 = cells[coord2id(row2, col, n_cols)]
+    assert cell1.left == cell2.left and cell1.right == cell2.right, 'The two cells should have the same left and right coordinates'
+
+    if cell1.bottom < cell2.top:
+        area = img[cell1.bottom : cell2.top, cell1.left : cell1.right]
+    elif cell2.bottom < cell1.top:
+        area = img[cell2.bottom : cell1.top, cell1.left : cell1.right]
+    else:
+        print('The two cells overlap')
+        return None
+    has_sep = (area.mean(axis=1).max() == 1.0)
+    return has_sep
+            
+def find_nearest_non_blank_row(cells, cur_row, col, texts_pos, image, n_rows, n_cols):
+    # update blank info of cells in the column if necessary
+    for row in range(0, n_rows):
+        id = coord2id(row, col, n_cols) # id of cells in the first column
+        if cells[id].is_blank is None:
+            cells[id].update_blank(texts_pos)
+
+    # search for the nearest non-blank cell in the first column, skip the top cell
+    nearest_row = -1
+    best_dist = 100000
+    for row in range(1, n_rows):
+        if cells[coord2id(row, col, n_cols)].is_blank or has_row_sep_between(row, cur_row, col, cells, image, n_cols):
+            continue
+        dist = abs(cur_row - row)
+        if dist < best_dist:
+            nearest_row = row
+            best_dist = dist
+    return nearest_row
+
+def rule5(cells, texts_pos, image, D_pred, only_first_col=True, verbose=False):
+    if D_pred is None: return
+    n_rows, n_cols = D_pred.shape[0] + 1, D_pred.shape[1]
+
+    if only_first_col:
+        cols = [0]
+    else:
+        cols = range(n_cols)
+
+    # check conditions and merge
+    for col in cols:
+        for row in range(1, n_rows):
+            id = coord2id(row, col, n_cols) 
+            if cells[id].is_blank is None:
+                cells[id].update_blank(texts_pos)
+            if cells[id].is_blank:
+                nearest_row = find_nearest_non_blank_row(cells, row, col, texts_pos, image, n_rows, n_cols)
+                if nearest_row == -1: continue
+                elif nearest_row <= row:
+                    D_pred[nearest_row:row, col] = 1
+                    if verbose: print(f'Merge cells from {nearest_row} to {row} in the first column')
+                else:
+                    D_pred[row:nearest_row, col] = 1
+                    if verbose: print(f'Merge cells from {row} to {nearest_row} in the first column')
+
+#######################################################################################
+### RULE 6 (INVENTED): If there are text between two blank cells,                   ###
 ###         then merge them together                                                ###
 #######################################################################################
                 
-def satisfies_rule3_right(cell1, cell2, texts_pos):
+def satisfies_rule_6_right(cell1, cell2, texts_pos):
     if not cell1.is_blank or not cell2.is_blank:
         return False
     
@@ -255,7 +426,7 @@ def satisfies_rule3_right(cell1, cell2, texts_pos):
         
     return False
 
-def satisfies_rule3_down(cell1, cell2, texts_pos):
+def satisfies_rule_6_down(cell1, cell2, texts_pos):
     if not cell1.is_blank or not cell2.is_blank:
         return False
     
@@ -269,7 +440,7 @@ def satisfies_rule3_down(cell1, cell2, texts_pos):
         
     return False
 
-def rule3(cells, texts_pos, R_pred, D_pred, verbose=False):
+def rule6(cells, texts_pos, R_pred, D_pred, verbose=False):
     num_rows, num_cols = get_shape(R_pred, D_pred)
     for id, cell in enumerate(cells):
         # update current cell info
@@ -287,7 +458,7 @@ def rule3(cells, texts_pos, R_pred, D_pred, verbose=False):
         # check right neighbor condition
         if rn and R_pred is not None and \
             cell.is_blank and cells[rn].is_blank and \
-            satisfies_rule3_right(cell, cells[rn], texts_pos) \
+            satisfies_rule_6_right(cell, cells[rn], texts_pos) \
         :
             R_pred[x, y] = 1
             if verbose: print(f'Merge right at cell ({x},{y})')
@@ -295,11 +466,10 @@ def rule3(cells, texts_pos, R_pred, D_pred, verbose=False):
         # check down neighbor condition
         if dn and D_pred is not None and \
             cell.is_blank and cells[dn].is_blank and \
-            satisfies_rule3_down(cell, cells[dn], texts_pos) \
+            satisfies_rule_6_down(cell, cells[dn], texts_pos) \
         :
             D_pred[x, y] = 1
             if verbose: print(f'Merge down at cell ({x},{y})')
-
 
 #######################################################################################
 ### RULES END #######################################################################
